@@ -7,68 +7,69 @@ class BasicAttention(nn.Module):
         super(BasicAttention, self).__init__()
         self.dropout = nn.Dropout(dropout)
     
-    def forward(self, q, c):
-        e = T.bmm(c, q.transpose(1, 2))
-        ai = F.softmax(e, dim=-1)
-        
-        a = T.bmm(ai, q)
-        b = T.cat([c, a], dim=-1)
-        out = self.dropout(b)
+    def forward(self, question, context):
+        e = T.bmm(context, question.transpose(1, 2))
+        attention_distribution = F.softmax(e, dim=-1)
+        attention_output = T.bmm(attention_distribution, question)
+        blended_rep = T.cat([context, attention_output], dim=-1)
+        out = self.dropout(blended_rep)
         
         return out
 
 class BiAttention(nn.Module):
-    def __init__(self, hidden_size):
+    def __init__(self, hidden_dim):
         super(BiAttention, self).__init__()
-        self.wsim = nn.Linear(6*hidden_size, 1, bias=False)
+        self.wsim = nn.Linear(6*hidden_dim, 1, bias=False)
     
-    def forward(self, q, c):
-        q_len = q.shape[1]
-        c_len = c.shape[1]
+    def forward(self, question, context):
+        question_len = question.shape[1]
+        context_len = context.shape[1]
 
-        q_t = q.unsqueeze(1).repeat(1, c_len, 1, 1)
-        c_t = c.unsqueeze(2).repeat(1, 1, q_len, 1)
-        q_elementwise_c = T.mul(q_t, c_t)
+        question_tiled = tile(question, dim=1, num_tile=context_len)
+        context_tiled = tile(context, dim=2, num_tile=question_len)
+        q_elementwise_c = T.mul(question_tiled, context_tiled)
         
-        matrix = T.cat([q_t, c_t, q_elementwise_c], 3)
-        S = self.wsim(matrix)
+        context_question_matrix = T.cat([question_tiled, context_tiled, q_elementwise_c], 3)
+        S = self.wsim(context_question_matrix)
         S = S.squeeze()
-        
-        context2query = T.bmm(F.softmax(S, dim=-1), q)
 
-        b = F.softmax(T.max(S, 2)[0], dim=-1)
-        query2context = T.bmm(b.unsqueeze(1), c).repeat(1, c_len, 1)
+        alpha = F.softmax(S, dim=-1)
+        context2question = T.bmm(alpha, question)
+
+        beta = F.softmax(T.max(S, dim=-1)[0], dim=-1)
+        query2context = T.bmm(beta.unsqueeze(1), context).repeat(1, context_len, 1)
         
-        contextatten = c.mul(context2query)
-        queryatten = c.mul(query2context)
+        attention_context = context.mul(context2question)
+        attention_question = context.mul(query2context)
         
-        return T.cat([c, context2query, contextatten, queryatten], 2)
+        return T.cat([context, attention_context, attention_question], dim=-1)
 
 class CoAttention(nn.Module):
-    def __init__(self, hidden_size):
+    def __init__(self, hidden_dim):
         super(CoAttention, self).__init__()
-        self.Wqj = nn.Linear(2*hidden_size, 2*hidden_size)
-        self.c0 = nn.Parameter(T.rand(2*hidden_size,))
-        self.q0 = nn.Parameter(T.rand(2 * hidden_size, ))
-        self.bilstm = nn.LSTM(6*hidden_size, 2*hidden_size, batch_first=True, bidirectional=True)
+        self.Wqj = nn.Linear(2*hidden_dim, 2*hidden_dim)
+        self.c0 = nn.Parameter(T.rand(2*hidden_dim,))
+        self.q0 = nn.Parameter(T.rand(2 * hidden_dim, ))
+        self.bilstm = nn.LSTM(6*hidden_dim, 2*hidden_dim, batch_first=True, bidirectional=True)
     
-    def forward(self, q, c):
-        b, _, l = q.shape
-        q_vec = self.q0.unsqueeze(0).expand(b, l).unsqueeze(1)
-        qj = T.cat([q, q_vec], dim=1)
-        Qj = F.tanh(self.Wqj(qj))
+    def forward(self, question, context):
+        b, _, l = question.shape
+        question_sentinel = self.q0.unsqueeze(0).expand(b, l).unsqueeze(1)
+        question_with_sentinel = T.cat([question, question_sentinel], dim=1)
+        Q = F.tanh(self.Wqj(question_with_sentinel))
         
-        c_vec = self.c0.unsqueeze(0).expand(b, l).unsqueeze(1)
-        Dj = T.cat([c, c_vec], dim=1)
+        context_sentinel = self.c0.unsqueeze(0).expand(b, l).unsqueeze(1)
+        context_with_sentinel = T.cat([context, context_sentinel], dim=1)
 
-        L = T.bmm(Dj, Qj.transpose(1, 2))
-        AQ = F.softmax(L, dim=2)
-        AD = F.softmax(L.transpose(1, 2), dim=2)
+        L = T.bmm(context_with_sentinel, question_with_sentinel.transpose(1, 2))
+        attention_question_dist = F.softmax(L, dim=2)
+        attention_context_dist = F.softmax(L.transpose(1, 2), dim=2)
         
-        CQ = T.bmm(AQ.transpose(1, 2), Dj)        
-        CD = T.bmm(AD.transpose(1, 2), T.cat([Qj, CQ], dim=-1))
+        attention_question = T.bmm(attention_question_dist.transpose(1, 2), context_with_sentinel)
+        attention_context = T.bmm(attention_context_dist.transpose(1, 2),
+                                  T.cat([question_with_sentinel, attention_question], dim=-1))
         
-        U, _ = self.bilstm(T.cat([Dj, CD], dim=-1))
+        U, _ = self.bilstm(T.cat([context_with_sentinel, attention_context], dim=-1))
         
         return U[:,:-1,:]
     
@@ -77,3 +78,5 @@ def tile(x, dim, num_tile):
     repeat_dim = [1]*(len(shape)+1)
     repeat_dim[dim] = num_tile
     return x.unsqueeze(dim).repeat(*repeat_dim)
+
+
