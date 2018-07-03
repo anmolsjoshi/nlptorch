@@ -1,5 +1,6 @@
 import torch as T
 from torch import nn as nn
+from torch.autograd import Variable
 from torch.nn import functional as F
 
 class BasicAttention(nn.Module):
@@ -45,15 +46,29 @@ class BiAttention(nn.Module):
         return T.cat([context, attention_context, attention_question], dim=-1)
 
 class CoAttention(nn.Module):
-    def __init__(self, hidden_dim):
+    def __init__(self, hidden_dim, use_cuda=False):
         super(CoAttention, self).__init__()
+        self.hidden_dim = hidden_dim
+        self.use_cuda = use_cuda
         self.Wqj = nn.Linear(2*hidden_dim, 2*hidden_dim)
         self.c0 = nn.Parameter(T.rand(2*hidden_dim,))
         self.q0 = nn.Parameter(T.rand(2 * hidden_dim, ))
-        self.bilstm = nn.LSTM(6*hidden_dim, 2*hidden_dim, batch_first=True, bidirectional=True)
+        self.BiLSTM = nn.LSTM(6*hidden_dim, 2*hidden_dim, batch_first=True, bidirectional=True)
+        if self.use_cuda:
+            self.cuda()
+        
+    def init_hidden(self, batch_size):
+        hidden = Variable(T.zeros(2, batch_size, self.hidden_dim*2))
+        context = Variable(T.zeros(2, batch_size, self.hidden_dim*2))
+        if self.use_cuda:
+            hidden=hidden.cuda()
+            context=context.cuda()
+        return (hidden,context)
     
     def forward(self, question, context):
         b, _, l = question.shape
+        hidden = self.init_hidden(b)
+        
         question_sentinel = self.q0.unsqueeze(0).expand(b, l).unsqueeze(1)
         question_with_sentinel = T.cat([question, question_sentinel], dim=1)
         Q = F.tanh(self.Wqj(question_with_sentinel))
@@ -69,7 +84,7 @@ class CoAttention(nn.Module):
         attention_context = T.bmm(attention_context_dist.transpose(1, 2),
                                   T.cat([question_with_sentinel, attention_question], dim=-1))
         
-        U, _ = self.bilstm(T.cat([context_with_sentinel, attention_context], dim=-1))
+        U, _ = self.BiLSTM(T.cat([context_with_sentinel, attention_context], dim=-1), hidden)
         
         return U[:,:-1,:]
     
@@ -78,5 +93,3 @@ def tile(x, dim, num_tile):
     repeat_dim = [1]*(len(shape)+1)
     repeat_dim[dim] = num_tile
     return x.unsqueeze(dim).repeat(*repeat_dim)
-
-
