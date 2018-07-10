@@ -2,10 +2,10 @@ from torch import nn as nn
 from torch.nn import functional as F
 from torch.autograd import Variable
 import torch as T
-from embedding import CharacterEmbedding, WordEmbedding, CharacterConvEmbedding
-from highway import Highway
-from maxout import Maxout
-from attention import CoAttention
+from src.layers.embedding import CharacterEmbedding, WordEmbedding, CharacterConvEmbedding
+from src.layers.highway import Highway
+from src.layers.maxout import Maxout
+from src.layers.attention import CoAttention
 
 
 class EmbedText(nn.Module):

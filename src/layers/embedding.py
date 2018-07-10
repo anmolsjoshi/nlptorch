@@ -7,7 +7,10 @@ class WordEmbedding(nn.Module):
     def __init__(self, vocab_size, embedding_dim, padding_idx, embeddings=None, trainable=True):
         super(WordEmbedding, self).__init__()
         if embeddings is not None:
-            self.embedding = nn.Embedding.from_pretrained(embeddings=embeddings, freeze=trainable)
+            #self.embedding = nn.Embedding.from_pretrained(embeddings=embeddings, freeze=trainable)
+            self.embedding = nn.Embedding(embeddings.shape[1], embeddings.shape[1])
+            self.embedding.weight = nn.Parameter(th.from_numpy(embeddings))
+            self.embedding.requires_grad = trainable
         else:
             self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx)
 
