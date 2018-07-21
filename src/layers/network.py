@@ -37,7 +37,7 @@ class EmbedText(nn.Module):
         return question_words_embed, context_words_embed, question_characters_embed, context_character_embed
 
 class Encoder(nn.Module):
-    def __init__(self, word_args, char_args, hidden_dim, shared, use_cuda):
+    def __init__(self, word_args, char_args, hidden_dim=200, shared=True, use_cuda=True):
         super(Encoder, self).__init__()
         self.hidden_dim = hidden_dim
         self.embedding_dim = char_args['embedding_dim'] + word_args['embedding_dim']
@@ -46,12 +46,12 @@ class Encoder(nn.Module):
         
         if self.shared:
             self.LSTMshared = nn.LSTM(self.embedding_dim, hidden_dim, bidirectional=True)
-            self.CharConvEmbeddingshared = CharacterConvEmbedding(**char_args, use_cuda=self.use_cuda)
+            self.CharConvEmbeddingshared = CharacterConvEmbedding(**char_args)
         else:
             self.LSTMcontext = nn.LSTM(self.embedding_dim, hidden_dim, bidirectional=True)
             self.LSTMquestion = nn.LSTM(self.embedding_dim, hidden_dim, bidirectional=True)
-            self.CharConvEmbeddingcontext = CharacterConvEmbedding(**char_args, use_cuda=self.use_cuda)
-            self.CharConvEmbeddingquestion = CharacterConvEmbedding(**char_args, use_cuda=self.use_cuda)
+            self.CharConvEmbeddingcontext = CharacterConvEmbedding(**char_args)
+            self.CharConvEmbeddingquestion = CharacterConvEmbedding(**char_args)
             
         if self.use_cuda:
             self.cuda()
