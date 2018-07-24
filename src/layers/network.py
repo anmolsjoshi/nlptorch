@@ -7,21 +7,40 @@ from src.layers.highway import Highway
 from src.layers.maxout import Maxout
 from src.layers.attention import CoAttention
 
+device = T.device("cuda:0")
 
-class EmbedText(nn.Module):
-    def __init__(self, word_args, char_args, shared):
-        super(EmbedText, self).__init__()
+class Encoder(nn.Module):
+    def __init__(self, word_args, char_args, hidden_dim=200, shared=True):
+        super(Encoder, self).__init__()
+        self.hidden_dim = hidden_dim
+        self.embedding_dim = char_args['embedding_dim'] + word_args['embedding_dim']
         self.shared = shared
+        
         if self.shared:
             self.WordEmbeddingshared = WordEmbedding(**word_args)
             self.CharacterEmbeddingshared = CharacterEmbedding(**char_args)
+            self.CharConvEmbeddingshared = CharacterConvEmbedding(**char_args).to(device)
+            self.LSTMshared = nn.LSTM(self.embedding_dim, hidden_dim, bidirectional=True).to(device)
         else:
             self.WordEmbeddingquestion = WordEmbedding(**word_args)
             self.CharacterEmbeddingquestion = CharacterEmbedding(**char_args)
             self.WordEmbeddingcontext = WordEmbedding(**word_args)
             self.CharacterEmbeddingcontext = CharacterEmbedding(**char_args)
-            
+            self.CharConvEmbeddingcontext = CharacterConvEmbedding(**char_args).to(device)
+            self.CharConvEmbeddingquestion = CharacterConvEmbedding(**char_args).to(device)
+            self.LSTMcontext = nn.LSTM(self.embedding_dim, hidden_dim, bidirectional=True).to(device)
+            self.LSTMquestion = nn.LSTM(self.embedding_dim, hidden_dim, bidirectional=True).to(device)
+        
+    def init_hidden(self, steps):
+        hidden = Variable(T.zeros(2, steps, self.hidden_dim))
+        context = Variable(T.zeros(2, steps, self.hidden_dim))
+        hidden = hidden.to(device)
+        context = context.to(device)
+        return (hidden, context)
+    
     def forward(self, question_words, context_words, question_characters, context_characters):
+        batch_size, question_len, _ = question_words.shape
+        _, context_len, _ = context_words.shape
         
         if self.shared:
             question_words_embed = self.WordEmbeddingshared(question_words)
@@ -33,50 +52,22 @@ class EmbedText(nn.Module):
             question_characters_embed = self.CharacterEmbeddingquestion(question_characters)
             context_words_embed = self.WordEmbeddingcontext(context_words)
             context_character_embed = self.CharacterEmbeddingcontext(context_characters)
-        
-        return question_words_embed, context_words_embed, question_characters_embed, context_character_embed
 
-class Encoder(nn.Module):
-    def __init__(self, word_args, char_args, hidden_dim=200, shared=True, use_cuda=True):
-        super(Encoder, self).__init__()
-        self.hidden_dim = hidden_dim
-        self.embedding_dim = char_args['embedding_dim'] + word_args['embedding_dim']
-        self.use_cuda = use_cuda
-        self.shared = shared
-        
+        question_words_embed = question_words_embed.to(device)
+        question_characters_embed = question_characters_embed.to(device)
+        context_words_embed = context_words_embed.to(device)
+        context_character_embed = context_character_embed.to(device)
+
         if self.shared:
-            self.LSTMshared = nn.LSTM(self.embedding_dim, hidden_dim, bidirectional=True)
-            self.CharConvEmbeddingshared = CharacterConvEmbedding(**char_args)
-        else:
-            self.LSTMcontext = nn.LSTM(self.embedding_dim, hidden_dim, bidirectional=True)
-            self.LSTMquestion = nn.LSTM(self.embedding_dim, hidden_dim, bidirectional=True)
-            self.CharConvEmbeddingcontext = CharacterConvEmbedding(**char_args)
-            self.CharConvEmbeddingquestion = CharacterConvEmbedding(**char_args)
-            
-        if self.use_cuda:
-            self.cuda()
-        
-    def init_hidden(self, steps):
-        hidden = Variable(T.zeros(2, steps, self.hidden_dim))
-        context = Variable(T.zeros(2, steps, self.hidden_dim))
-        if self.use_cuda:
-            hidden=hidden.cuda()
-            context=context.cuda()
-        return (hidden,context)
-    
-    def forward(self, question_words, context_words, question_characters, context_characters):
-        batch_size, question_len, _ = question_words.shape
-        _, context_len, _ = context_words.shape
-        
-        if self.shared:
-            question_charconv = self.CharConvEmbeddingshared(question_characters)
-            context_charconv = self.CharConvEmbeddingshared(context_characters)
+            question_charconv = self.CharConvEmbeddingshared(question_characters_embed)
+            context_charconv = self.CharConvEmbeddingshared(context_character_embed)
         else:
             question_charconv = self.CharConvEmbeddingquestion(question_characters)
             context_charconv = self.CharConvEmbeddingcontext(context_characters)
-                
-        question = T.cat([question_words, question_charconv], dim=-1)
-        context = T.cat([context_words, context_charconv], dim=-1)
+
+
+        question = T.cat([question_words_embed, question_charconv], dim=-1)
+        context = T.cat([context_words_embed, context_charconv], dim=-1)
                 
         hidden_question = self.init_hidden(steps=question_len)
         hidden_context = self.init_hidden(steps=context_len)
