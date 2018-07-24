@@ -15,6 +15,7 @@ class WordEmbedding(nn.Module):
             self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx)
 
     def forward(self, x):
+        x = x.clamp(0, 400002)
         return self.embedding(x)
 
 class CharacterEmbedding(nn.Module):
@@ -27,6 +28,7 @@ class CharacterEmbedding(nn.Module):
             self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx)
 
     def forward(self, x):
+        x = x.clamp(0, 71)
         return self.embedding(x)    
     
 

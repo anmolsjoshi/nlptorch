@@ -239,14 +239,16 @@ def get_batch_generator(word2id, char2id, context_path, qn_path, ans_path, batch
         
         # Make qn_ids into a np array and create qn_mask
         qn_ids = np.array(qn_ids).astype(np.int32) # shape (question_len, batch_size)
+        qn_ids = np.clip(qn_ids, a_min=0, a_max=400002)
         qn_char_ids = np.array(qn_char_ids).astype(np.int32)
-        qn_char_ids = np.clip(qn_char_ids, a_min=0, a_max=None)
+        qn_char_ids = np.clip(qn_char_ids, a_min=0, a_max=71)
         qn_mask = (qn_ids != PAD_ID).astype(np.int32) # shape (question_len, batch_size)
 
         # Make context_ids into a np array and create context_mask
         context_ids = np.array(context_ids).astype(np.int32).astype(np.int32) # shape (context_len, batch_size)
+        context_ids = np.clip(context_ids, a_min=0, a_max=400002)
         context_char_ids = np.array(context_char_ids).astype(np.int32)
-        context_char_ids = np.clip(context_char_ids, a_min=0, a_max=None)
+        context_char_ids = np.clip(context_char_ids, a_min=0, a_max=71)
         context_mask = (context_ids != PAD_ID).astype(np.int32) # shape (context_len, batch_size)
 
         # Make ans_span into a np array
