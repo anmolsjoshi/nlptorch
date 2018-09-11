@@ -1,2 +1,3 @@
-C1 Secret
-=========
+Implementation of Machine Comprehension Models on SQuAD Dataset using PyTorch
+=============================================================================
+
